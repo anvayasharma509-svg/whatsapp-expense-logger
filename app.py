@@ -1,11 +1,21 @@
+import requests
 from flask import Flask, request
-from twilio.twiml.messaging_response import MessagingResponse
 import config
 import parser as expense_parser
 import sheets
 import queries
 
 app = Flask(__name__)
+
+TELEGRAM_API = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}"
+
+
+def _send_message(chat_id, text: str) -> None:
+    requests.post(
+        f"{TELEGRAM_API}/sendMessage",
+        json={"chat_id": chat_id, "text": text},
+        timeout=10,
+    )
 
 
 def _handle_query(query: dict, sheet_id: str) -> str:
@@ -25,36 +35,46 @@ def _handle_query(query: dict, sheet_id: str) -> str:
     return "Could not parse that. Try: flight 8977 delhi trip"
 
 
+@app.route("/", methods=["GET"])
+def health():
+    return "OK", 200
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    sender = request.form.get("From", "")
-    body = request.form.get("Body", "").strip()
+    update = request.get_json(silent=True) or {}
+    message = update.get("message") or update.get("edited_message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    body = (message.get("text") or "").strip()
 
-    resp = MessagingResponse()
+    # Nothing actionable in this update
+    if chat_id is None:
+        return "", 200
 
-    # Silently ignore messages from unknown numbers
-    sheet_id = config.USER_SHEETS.get(sender)
+    # Silently ignore messages from unknown chats
+    sheet_id = config.USER_SHEETS.get(str(chat_id))
     if not sheet_id:
-        return str(resp), 200
+        return "", 200
 
     if not body:
-        resp.message("Please send a message to log an expense or query your data.")
-        return str(resp), 200
+        _send_message(chat_id, "Please send a message to log an expense or query your data.")
+        return "", 200
 
     # Parse with Claude
     try:
         parsed = expense_parser.parse_message(body)
     except Exception:
-        resp.message("Could not parse that right now. Try again in a moment.")
-        return str(resp), 200
+        _send_message(chat_id, "Could not parse that right now. Try again in a moment.")
+        return "", 200
 
     error = parsed.get("error")
     if error == "no_amount":
-        resp.message("What was the amount for that?")
-        return str(resp), 200
+        _send_message(chat_id, "What was the amount for that?")
+        return "", 200
     if error == "unrecognisable":
-        resp.message("Could not parse that. Try: flight 8977 delhi trip")
-        return str(resp), 200
+        _send_message(chat_id, "Could not parse that. Try: flight 8977 delhi trip")
+        return "", 200
 
     intent = parsed.get("intent")
 
@@ -63,24 +83,24 @@ def webhook():
         try:
             sheets.append_expense(entry, sheet_id)
         except Exception:
-            resp.message("Something went wrong saving that. Try again in a moment.")
-            return str(resp), 200
+            _send_message(chat_id, "Something went wrong saving that. Try again in a moment.")
+            return "", 200
         note = entry.get("note")
         note_part = f" | {note}" if note else ""
         reply = f"Logged. {entry.get('category')} | {entry.get('amount')}{note_part} | {entry.get('date')}"
-        resp.message(reply)
+        _send_message(chat_id, reply)
 
     elif intent == "query":
         try:
             reply = _handle_query(parsed.get("query", {}), sheet_id)
         except Exception:
             reply = "Something went wrong reading that. Try again in a moment."
-        resp.message(reply)
+        _send_message(chat_id, reply)
 
     else:
-        resp.message("Could not parse that. Try: flight 8977 delhi trip")
+        _send_message(chat_id, "Could not parse that. Try: flight 8977 delhi trip")
 
-    return str(resp), 200
+    return "", 200
 
 
 if __name__ == "__main__":

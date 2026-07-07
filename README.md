@@ -1,13 +1,13 @@
-# WhatsApp Expense Logger
+# Telegram Expense Logger
 
-A personal WhatsApp bot that turns casual messages into a structured expense log in Google Sheets.
+A personal Telegram bot that turns casual messages into a structured expense log in Google Sheets.
 
-Send `flight 8977 delhi trip` from your WhatsApp → bot logs it and replies `Logged. Flight | 8977 | Delhi trip | 25 Jun`.
+Send `flight 8977 delhi trip` to your bot → it logs the entry and replies `Logged. Flight | 8977 | Delhi trip | 25 Jun`.
 
 ## How it works
 
-1. You send a WhatsApp message to your Twilio sandbox number
-2. Twilio POSTs it to this Flask webhook
+1. You send a message to your Telegram bot
+2. Telegram POSTs the update to this Flask webhook
 3. Claude (`claude-sonnet-4-6`) parses the message into structured JSON
 4. The server writes a row to the correct month tab in your Google Sheet
 5. The bot replies confirming what was logged (or answering your query)
@@ -58,11 +58,12 @@ One tab per calendar month, named `Mon YYYY` (e.g. `Jun 2026`). New tabs are cre
 
 ## One-time setup
 
-### 1. Twilio
+### 1. Telegram bot
 
-1. Sign up at [twilio.com](https://twilio.com)
-2. Go to **Messaging → Try it out → Send a WhatsApp message**
-3. Note your **Account SID**, **Auth Token**, and the **sandbox number** (`whatsapp:+14155238886`)
+1. Open Telegram and message [@BotFather](https://t.me/BotFather)
+2. Send `/newbot`, pick a name and a username ending in `bot`
+3. Copy the **bot token** it gives you (looks like `123456789:AAxxxxxxxx`)
+4. Get your numeric **chat ID**: message [@userinfobot](https://t.me/userinfobot) — it replies with your ID
 
 ### 2. Google Cloud & Sheets
 
@@ -98,23 +99,17 @@ python app.py
 4. Upload `credentials.json` contents as the env var `GOOGLE_CREDENTIALS_JSON` **or** include the file in the repo (not recommended)
 5. Copy the Railway public URL (e.g. `https://your-app.up.railway.app`)
 
-### 6. Connect Twilio webhook
+### 6. Register the Telegram webhook
 
-1. In Twilio console → Messaging → Settings → WhatsApp Sandbox Settings
-2. Set **When a message comes in** to: `https://your-app.up.railway.app/webhook`
-3. Method: `HTTP POST`
-
-### 7. Activate sandbox on your phone
-
-Send this message from your WhatsApp to the Twilio sandbox number:
+Tell Telegram where to send messages. Run this once (replace the token and URL):
 ```
-join <sandbox-word>
+curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-app.up.railway.app/webhook"
 ```
-(The sandbox word is shown in your Twilio console)
+You should get back `{"ok":true,"result":true,...}`.
 
-### 8. Test it
+### 7. Test it
 
-Send `flight 8977 test` from your WhatsApp. A row should appear in your Google Sheet and the bot should reply:
+Open your bot in Telegram, hit **Start**, and send `flight 8977 test`. A row should appear in your Google Sheet and the bot should reply:
 ```
 Logged. Flight | 8977 | Test | 25 Jun
 ```
@@ -123,13 +118,14 @@ Logged. Flight | 8977 | Test | 25 Jun
 
 | Variable | Description |
 |---|---|
-| `TWILIO_ACCOUNT_SID` | From your Twilio console |
-| `TWILIO_AUTH_TOKEN` | From your Twilio console |
-| `TWILIO_WHATSAPP_NUMBER` | Twilio sandbox number (`whatsapp:+14155238886`) |
-| `YOUR_WHATSAPP_NUMBER` | Your personal number in E.164 format (`whatsapp:+91XXXXXXXXXX`) |
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
+| `ALLOWED_CHAT_IDS` | Comma-separated numeric chat IDs allowed to use the bot |
+| `GOOGLE_SHEET_IDS` | Comma-separated Sheet IDs, positionally matched to `ALLOWED_CHAT_IDS` |
 | `ANTHROPIC_API_KEY` | From console.anthropic.com |
-| `GOOGLE_SHEET_ID` | Sheet ID from the Google Sheet URL |
 | `GOOGLE_CREDENTIALS_FILE` | Path to credentials.json (default: `./credentials.json`) |
+| `GOOGLE_CREDENTIALS_JSON` | Full service-account JSON (used on Railway instead of the file) |
+
+> `ALLOWED_CHAT_IDS` and `GOOGLE_SHEET_IDS` are matched by position: the first chat ID uses the first sheet, the second uses the second, and so on.
 
 ## Error responses
 
@@ -139,7 +135,7 @@ Logged. Flight | 8977 | Test | 25 Jun
 | Unrecognisable message | `Could not parse that. Try: flight 8977 delhi trip` |
 | Google Sheets error | `Something went wrong saving that. Try again in a moment.` |
 | Claude API error | `Could not parse that right now. Try again in a moment.` |
-| Message from unknown number | Silently ignored (HTTP 200) |
+| Message from unknown chat | Silently ignored (HTTP 200) |
 | Query with no results | `No [category] entries found for [month].` |
 
 ## Out of scope (v1)
