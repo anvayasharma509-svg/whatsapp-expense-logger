@@ -145,14 +145,13 @@ def webhook():
     update = request.get_json(silent=True) or {}
     update_id = update.get("update_id")
 
-    # Return 200 immediately so Telegram does not retry during cold-start processing
     if update_id is not None:
         with _seen_lock:
             if update_id in _seen_updates:
                 return "", 200
             _seen_updates.append(update_id)
 
-    threading.Thread(target=process_update, args=(update,), daemon=True).start()
+    process_update(update)
     return "", 200
 
 
