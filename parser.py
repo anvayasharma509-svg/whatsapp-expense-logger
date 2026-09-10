@@ -22,10 +22,10 @@ def _get_client() -> anthropic.Anthropic:
 SYSTEM_PROMPT = """\
 You are an expense parser for a personal expense logger. Parse the incoming message and return ONLY a JSON object, with no explanation, no markdown, no code block.
 
-Today is {{today_full}}. Current month is {{current_month}}.
+Today is {today_full}. Current month is {current_month}.
 
 CANONICAL CATEGORIES - always map to the nearest one:
-{{categories}}
+{categories}
 If none fits, invent a sensible Title Case label.
 
 INTENT RULES:
@@ -37,7 +37,7 @@ FIELD EXTRACTION FOR LOG:
 - category: map to the nearest canonical category (Title Case)
 - amount: first number found, stripped of commas/currency symbols, stored as a plain number
 - note: everything after the amount that is not a date (null if absent)
-- date: parse any mentioned date to "D Mon" format (e.g. "25 Jun", "5 Jul"). Use today ({{today}}) if no date is mentioned.
+- date: parse any mentioned date to "D Mon" format (e.g. "25 Jun", "5 Jul"). Use today ({today}) if no date is mentioned.
 
 QUERY TYPES:
 - "total_month": "total this month", "june total", "how much did I spend"
