@@ -80,23 +80,15 @@ def _handle_photo(chat_id: int, message: dict, sheet_id: str) -> None:
         _send_message(chat_id, "No items found in the screenshot.")
         return
 
-    logged = []
-    failed = 0
-    for item in items:
-        try:
-            sheets.append_expense(item, sheet_id)
-            sheets.log_usage(sheet_id, "log", item.get("category"))
-            logged.append(f"{item.get('note', 'Item')} | {item.get('amount')}")
-        except Exception:
-            failed += 1
-
-    if not logged:
-        _send_message(chat_id, "Parsed the image but could not log any items. Try again.")
+    try:
+        sheets.batch_append_expenses(items, sheet_id)
+        sheets.log_usage(sheet_id, "log_screenshot", "Groceries")
+    except Exception:
+        _send_message(chat_id, "Parsed the image but could not log items. Try again.")
         return
 
-    lines = "\n".join(f"- {l}" for l in logged)
-    suffix = f"\n{failed} item(s) failed to log." if failed else ""
-    _send_message(chat_id, f"Logged {len(logged)} items:\n{lines}{suffix}")
+    lines = "\n".join(f"- {item.get('note', 'Item')} | {item.get('amount')}" for item in items)
+    _send_message(chat_id, f"Logged {len(items)} items:\n{lines}")
 
 
 def _handle_undo(chat_id: int, sheet_id: str) -> None:

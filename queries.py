@@ -3,6 +3,15 @@ from datetime import date
 import config
 import sheets
 
+_client = None
+
+
+def _get_client() -> anthropic.Anthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return _client
+
 
 def _current_month() -> str:
     return date.today().strftime("%b %Y")
@@ -111,8 +120,7 @@ def freeform_query(sheet_id: str, question: str) -> str:
         return "No data found for the last 3 months."
 
     data_text = "\n".join(data_lines)
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    response = client.messages.create(
+    response = _get_client().messages.create(
         model="claude-sonnet-4-6",
         max_tokens=512,
         system=(

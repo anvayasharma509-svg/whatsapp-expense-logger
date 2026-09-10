@@ -8,17 +8,22 @@ import config
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 HEADERS = ["Date", "Category", "Amount", "Note"]
 
+_service = None
+
 
 def _get_service():
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if creds_json:
-        info = json.loads(creds_json)
-        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    else:
-        creds = service_account.Credentials.from_service_account_file(
-            config.GOOGLE_CREDENTIALS_FILE, scopes=SCOPES
-        )
-    return build("sheets", "v4", credentials=creds)
+    global _service
+    if _service is None:
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if creds_json:
+            info = json.loads(creds_json)
+            creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        else:
+            creds = service_account.Credentials.from_service_account_file(
+                config.GOOGLE_CREDENTIALS_FILE, scopes=SCOPES
+            )
+        _service = build("sheets", "v4", credentials=creds)
+    return _service
 
 
 def _current_month_tab() -> str:
@@ -86,6 +91,32 @@ def append_expense(entry: dict, sheet_id: str) -> None:
         insertDataOption="INSERT_ROWS",
         body={"values": [row]},
     ).execute()
+
+
+def batch_append_expenses(entries: list, sheet_id: str) -> None:
+    """Append multiple expense rows, grouping by tab to minimise API calls."""
+    if not entries:
+        return
+    from collections import defaultdict
+    service = _get_service()
+    by_tab = defaultdict(list)
+    for entry in entries:
+        tab = _tab_from_entry_date(entry.get("date", ""))
+        by_tab[tab].append([
+            entry.get("date", ""),
+            entry.get("category", ""),
+            entry.get("amount", 0),
+            entry.get("note") or "",
+        ])
+    for tab_name, rows in by_tab.items():
+        _ensure_tab(service, sheet_id, tab_name)
+        service.spreadsheets().values().append(
+            spreadsheetId=sheet_id,
+            range=f"'{tab_name}'!A:D",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": rows},
+        ).execute()
 
 
 def get_month_rows(sheet_id: str, month: str = None) -> list:
