@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import date
 import anthropic
@@ -90,6 +91,55 @@ def parse_message(message: str) -> dict:
         max_tokens=512,
         system=system,
         messages=[{"role": "user", "content": message}],
+    )
+
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    return json.loads(raw)
+
+
+def parse_order_screenshot(image_bytes: bytes) -> list:
+    """Parse a Swiggy Instamart order screenshot into a list of expense entry dicts."""
+    today = date.today()
+    today_str = f"{today.day} {today.strftime('%b')}"
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    prompt = (
+        "This is a Swiggy Instamart grocery order screenshot. "
+        "Extract every ordered item and its price.\n\n"
+        "Return ONLY a JSON array. Each element must have exactly these fields:\n"
+        '- "category": always "Groceries"\n'
+        '- "amount": the item price as a plain number (no currency symbols, no commas)\n'
+        '- "note": the item name (short and clean)\n'
+        f'- "date": "{today_str}"\n\n'
+        "If an item shows a discounted price, use the final price paid (the lower number).\n"
+        "Include ONLY items with a clear price. "
+        "Ignore delivery charges, taxes, platform fees, and order totals.\n\n"
+        "Return ONLY the JSON array, no explanation, no markdown."
+    )
+
+    response = _get_client().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1000,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": image_b64,
+                    },
+                },
+                {"type": "text", "text": prompt},
+            ],
+        }],
     )
 
     raw = response.content[0].text.strip()
